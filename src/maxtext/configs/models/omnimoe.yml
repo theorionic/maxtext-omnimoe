@@ -67,7 +67,7 @@ adam_eps: 1.0e-8
 gradient_clipping_threshold: 1.0
 
 # --- Training ---
-per_device_batch_size: 4
+per_device_batch_size: 64
 max_target_length: 1024
 
 # --- Sharding (8 cores, FSDP) ---
@@ -77,3 +77,4 @@ ici_expert_parallelism: 1
 ici_data_parallelism: 1
 scan_layers: false
 remat_policy: "minimal"
+weight_dtype: "bfloat16"
