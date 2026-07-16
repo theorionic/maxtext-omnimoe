@@ -504,9 +504,12 @@ def train_step(model, config, state_mesh_shardings, params_shardings, state, dat
     # Apply updates for Auxiliary-Loss-Free load balancing for DeepSeek family
     if config.routed_bias and config.routed_bias_update_rate > 0.0 and moe_bias_updates is not None:
       target_path = ("params", "decoder", "moe_layers", "DeepSeekMoeBlock_0", "MoeBlock_0", "gate", "bias")
-      # Updates the shape to be aligned with state.
-      moe_bias_updates = jnp.array(moe_bias_updates[0]).transpose()
-      new_state = maxtext_utils.update_state_param(new_state, target_path, moe_bias_updates)
+      moe_bias_updates_t = jnp.array(moe_bias_updates[0]).transpose()
+      if maxtext_utils.has_nested_value(new_state, target_path):
+        new_state = maxtext_utils.update_state_param(new_state, target_path, moe_bias_updates_t)
+      else:
+        new_state = maxtext_utils.update_state_by_suffix(
+            new_state, ("MoeBlock_0", "gate", "bias"), moe_bias_updates_t)
   else:
     if config.gradient_clipping_threshold > 0:
       grads = maxtext_utils.apply_gradient_clipping(raw_grads, None, config.gradient_clipping_threshold)
@@ -535,8 +538,68 @@ def train_step(model, config, state_mesh_shardings, params_shardings, state, dat
 
     # Apply updates for Auxiliary-Loss-Free load balancing for DeepSeek family
     if config.routed_bias and config.routed_bias_update_rate > 0.0 and moe_bias_updates is not None:
-      target_bias = new_state.model.decoder.moe_layers.DeepSeekMoeBlock_0.MoeBlock_0.gate.bias
-      target_bias.value = target_bias.value + jnp.array(moe_bias_updates[0]).transpose()
+      def find_all_parent_and_attr_nnx(obj, suffix_path):
+        results = []
+        def dfs(curr_obj, path_suffix):
+          if len(path_suffix) == 1:
+            attr = path_suffix[0]
+            if hasattr(curr_obj, attr):
+              results.append((curr_obj, attr))
+            return
+          if isinstance(curr_obj, (nnx.Module, dict, list)):
+            if isinstance(curr_obj, nnx.Module):
+              names = dir(curr_obj)
+              def natural_sort_key(s):
+                import re
+                return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', s)]
+              names.sort(key=natural_sort_key)
+              for name in names:
+                if name.startswith('_'):
+                  continue
+                try:
+                  val = getattr(curr_obj, name)
+                except AttributeError:
+                  continue
+                if name == path_suffix[0]:
+                  dfs(val, path_suffix[1:])
+                else:
+                  dfs(val, path_suffix)
+            elif isinstance(curr_obj, dict):
+              keys = list(curr_obj.keys())
+              def natural_sort_key(s):
+                import re
+                return [int(text) if text.isdigit() else text.lower() for text in re.split('([0-9]+)', str(s))]
+              keys.sort(key=natural_sort_key)
+              for key in keys:
+                val = curr_obj[key]
+                if key == path_suffix[0]:
+                  dfs(val, path_suffix[1:])
+                else:
+                  dfs(val, path_suffix)
+            elif isinstance(curr_obj, list):
+              for val in curr_obj:
+                dfs(val, path_suffix)
+        dfs(obj, suffix_path)
+        return results
+
+      biases = find_all_parent_and_attr_nnx(new_state.model, ("gate", "bias"))
+      if len(biases) == 1:
+        parent, attr = biases[0]
+        old_val = getattr(parent, attr)
+        update = jnp.array(moe_bias_updates[0]).reshape(old_val.shape)
+        if hasattr(old_val, "value"):
+          old_val.value = old_val.value + update
+        else:
+          setattr(parent, attr, old_val + update)
+      else:
+        for i, (parent, attr) in enumerate(biases):
+          if i < len(moe_bias_updates):
+            old_val = getattr(parent, attr)
+            update = jnp.array(moe_bias_updates[i]).reshape(old_val.shape)
+            if hasattr(old_val, "value"):
+              old_val.value = old_val.value + update
+            else:
+              setattr(parent, attr, old_val + update)
 
   lm_loss = xent_sum / (total_weights + EPS)
   scalar_metrics = {

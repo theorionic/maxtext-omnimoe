@@ -65,6 +65,7 @@ from maxtext.models import (
     qwen3_5,
     qwen3_custom,
     simple_layer,
+    omnimoe,
 )
 from maxtext.multimodal import utils as mm_utils
 from maxtext.utils import max_logging, max_utils, maxtext_utils, maxtext_utils_nnx, sharding
@@ -1120,6 +1121,7 @@ class NNXDecoder(nnx.Module):
         DecoderBlockType.QWEN3_CUSTOM_MOE: [qwen3_custom.Qwen3CustomMoeDecoderLayer],
         DecoderBlockType.SIMPLE: [simple_layer.SimpleDecoderLayer],
         DecoderBlockType.SIMPLE_MLP: [simple_layer.SimpleMlpDecoderLayer],
+        DecoderBlockType.OMNIMOE: [omnimoe.OmniMoEDecoderLayer],
         DecoderBlockType.DEEPSEEK: get_deepseek(),
         DecoderBlockType.DEEPSEEK4: get_scannable(deepseek4.DeepSeek4DecoderLayer, deepseek4.DeepSeek4ScannableBlock),
         DecoderBlockType.GPT_OSS: get_scannable(gpt_oss.GptOssDecoderLayer, gpt_oss.GptOssScannableBlock),
@@ -1286,6 +1288,7 @@ class NNXDecoder(nnx.Module):
         DecoderBlockType.SIMPLE_MLP,
         DecoderBlockType.LLAMA4,
         DecoderBlockType.OLMO3,
+        DecoderBlockType.OMNIMOE,
     }:
       return functools.partial(
           RMSNorm,

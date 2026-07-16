@@ -1492,6 +1492,41 @@ def update_state_param(state, target_path, value):
   return state.replace(params=new_params)
 
 
+def has_nested_value(state, target_path):
+  """Checks if a nested key path exists in state.params."""
+  current = state.params
+  for key in target_path:
+    if not hasattr(current, "__getitem__") or key not in current:
+      return False
+    current = current[key]
+  return True
+
+
+def update_state_by_suffix(state, suffix_path, value):
+  """Updates all params whose key-path ends with suffix_path."""
+  suffix = tuple(jax.tree_util.DictKey(key=k) for k in suffix_path)
+  n = len(suffix)
+
+  def _apply_update(path, param):
+    path_keys = tuple(k for k in path if isinstance(k, jax.tree_util.DictKey))
+    if len(path_keys) >= n and path_keys[-n:] == suffix:
+      return param + value
+    return param
+
+  new_params = jax.tree_util.tree_map_with_path(_apply_update, state.params)
+  return state.replace(params=new_params)
+
+
+def find_param_by_suffix_nnx(model, suffix_path):
+  """Finds an nnx.Variable by matching the end of its path in the model graph."""
+  graphdef, state = nnx.split(model)
+  for path, val in jax.tree_util.tree_leaves_with_path(state):
+    path_keys = tuple(k.key for k in path if hasattr(k, "key"))
+    if len(path_keys) >= len(suffix_path) and path_keys[-len(suffix_path):] == suffix_path:
+      return val
+  raise KeyError(f"No param found with suffix {suffix_path}")
+
+
 def init_decode_state(apply_fn, params) -> TrainState:
   """Init train state with null opt state for decode."""
   state = TrainState(step=0, apply_fn=apply_fn, params=params, tx=None, opt_state={})  # type: ignore

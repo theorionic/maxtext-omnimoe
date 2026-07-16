@@ -33,7 +33,6 @@ from maxtext.utils import exceptions
 from maxtext.utils import max_logging
 from maxtext.utils import gcs_utils
 from maxtext.utils import elastic_utils
-from maxtext.checkpoint_conversion.utils.load_dynamic import load_safetensors_dynamic_state
 
 import numpy as np
 import orbax.checkpoint as ocp
@@ -885,6 +884,7 @@ def load_state_if_possible(
     path = load_parameters_from_path or load_full_state_from_path
     max_logging.log(f"Dynamic On-the-Fly Formatting: Loading SafeTensors from {path}")
 
+    from maxtext.checkpoint_conversion.utils.load_dynamic import load_safetensors_dynamic_state
     return load_safetensors_dynamic_state(path, abstract_unboxed_pre_state, maxtext_config)
   elif load_parameters_from_path != "":
     if isinstance(abstract_unboxed_pre_state, nnx.State):

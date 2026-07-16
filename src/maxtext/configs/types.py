@@ -279,6 +279,8 @@ ModelName = Literal[
     "olmo3-7b",
     "olmo3-7b-pt",
     "olmo3-32b",
+    "omnimoe",
+    "omnimoe-test",
 ]
 
 
@@ -636,6 +638,10 @@ class Attention(BaseModel):
   force_q_layout: bool = Field(False, description="Force the Q layout")
   use_qk_clip: bool = Field(False, description="Whether to use QK-Clip (MuonClip) for training stability.")
   qk_clip_threshold: float = Field(100.0, description="Threshold for QK-Clip (tau).")
+  omnimoe_full_causal_every_n: int = Field(
+      4,
+      description="OmniMoE hybrid attention: every Nth layer uses full causal attention, the rest use sliding-window.",
+  )
 
 
 class MoBa(BaseModel):
@@ -3252,7 +3258,7 @@ class MaxTextConfig(
           )
       if self.decoder_block == DecoderBlockType.GPT_OSS and not self.sparse_matmul and self.capacity_factor != -1:
         raise ValueError("GPT-OSS MoE only supports dropless (capacity_factor=-1) with dense matmul.")
-      if self.routed_bias and self.routed_bias_update_rate > 0.0 and self.decoder_block != DecoderBlockType.DEEPSEEK:
+      if self.routed_bias and self.routed_bias_update_rate > 0.0 and self.decoder_block not in (DecoderBlockType.DEEPSEEK, DecoderBlockType.OMNIMOE):
         raise ValueError("Loss-free load balancing is only supported for the DeepSeek decoder block.")
       if self.model_name.startswith("deepseek4") and self.first_num_hash_layers > 0 and self.use_ring_of_experts:
         raise ValueError("DeepSeek V4 hash routing is currently not supported with ring of experts.")
@@ -3371,6 +3377,7 @@ class MaxTextConfig(
     if self.decoder_block in (
         DecoderBlockType.QWEN3_NEXT,
         DecoderBlockType.QWEN3_5,
+        DecoderBlockType.OMNIMOE,
     ):
       if int(self.gdn_num_value_heads) % int(self.gdn_num_key_heads) != 0:
         raise ValueError("gdn_num_value_heads must be divisible by gdn_num_key_heads")
@@ -3379,7 +3386,7 @@ class MaxTextConfig(
         raise ValueError(f"Calculated rotary dimension ({rotary_dim}) must be a multiple of 2.")
     else:
       if self.partial_rotary_factor is not None and self.partial_rotary_factor != 1.0:
-        raise ValueError("`partial_rotary_factor` is only effective when `decoder_block` is set to 'qwen3_next'.")
+        raise ValueError("`partial_rotary_factor` is only effective when `decoder_block` is set to 'qwen3_next' or 'omnimoe'.")
 
     tokenizer_path = getattr(self, "tokenizer_path", None)
     if (

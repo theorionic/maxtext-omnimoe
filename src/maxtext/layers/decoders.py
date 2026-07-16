@@ -56,6 +56,7 @@ from maxtext.models import (
     mistral,
     mixtral,
     olmo3,
+    omnimoe,
     qwen2,
     qwen3,
     qwen3_custom,
@@ -514,6 +515,8 @@ class Decoder(nn.Module):
         return [llama4.Llama4ScannableBlockToLinen] if self.config.scan_layers else [llama4.Llama4DecoderLayerToLinen]
       case DecoderBlockType.OLMO3:
         return [olmo3.Olmo3ScannableBlockToLinen] if self.config.scan_layers else [olmo3.Olmo3DecoderLayerToLinen]
+      case DecoderBlockType.OMNIMOE:
+        return [omnimoe.OmniMoEDecoderLayerToLinen]
 
       case _:
         # Default case to handle any unknown decoder block types.
@@ -549,6 +552,7 @@ class Decoder(nn.Module):
         DecoderBlockType.DEEPSEEK: [deepseek.DeepSeekDenseLayer, deepseek.DeepSeekMoELayer],
         DecoderBlockType.LLAMA4: get_scannable(llama4.Llama4DecoderLayer, llama4.Llama4ScannableBlock),
         DecoderBlockType.OLMO3: get_scannable(olmo3.Olmo3DecoderLayer, olmo3.Olmo3ScannableBlock),
+        DecoderBlockType.OMNIMOE: [omnimoe.OmniMoEDecoderLayer],
     }
 
     if cfg.decoder_block not in layer_map:

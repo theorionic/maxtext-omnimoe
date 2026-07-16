@@ -48,7 +48,6 @@ from jax.sharding import Mesh
 from maxtext.common import checkpointing
 from maxtext.common.common_types import MODEL_MODE_AUTOREGRESSIVE, MODEL_MODE_TRAIN
 from maxtext.configs import pyconfig
-from maxtext.integration.tunix.tunix_adapter import TunixMaxTextAdapter
 from maxtext.layers import quantizations
 from maxtext.models import models
 from maxtext.utils import max_logging
@@ -772,6 +771,7 @@ def create_models_and_meshes(trainer_config, sampler_config, trainer_devices, sa
       # TunixMaxTextAdapter wraps MaxText models to be compatible with Tunix's default APIs
       # The weight mappings for vllm (which is interfaced to from MaxText via Tunix) are model specific.
       # The mappings are defined inside src/maxtext/integration/tunix/weight_mapping
+      from maxtext.integration.tunix.tunix_adapter import TunixMaxTextAdapter
       actor_model = TunixMaxTextAdapter(
           base_model=actor_base_model,
           use_no_op_mappings=use_no_op_mappings,
@@ -1201,6 +1201,7 @@ def from_pretrained(
     if wrap_with_tunix_adapter:
       with mesh:
         use_no_op_mappings = "maxtext_config" in config.vllm_additional_config
+        from maxtext.integration.tunix.tunix_adapter import TunixMaxTextAdapter
         model = TunixMaxTextAdapter(
             base_model=model,  # pyrefly: ignore[bad-argument-type]
             use_no_op_mappings=use_no_op_mappings,
