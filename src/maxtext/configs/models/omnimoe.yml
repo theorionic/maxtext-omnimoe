@@ -76,5 +76,24 @@ ici_tensor_parallelism: 1
 ici_expert_parallelism: 1
 ici_data_parallelism: 1
 scan_layers: false
-remat_policy: "minimal"
+# "minimal" OOMs at per_device_batch_size=64 on v5e-8 (needs 35.78GB vs 15.75GB HBM/chip) —
+# the 64-expert fine-grained MoE FFN activations dominate memory. "full" recomputes
+# activations in the backward pass instead of keeping them resident, which is the only
+# tested remat policy that fits bs=64 in 16GB HBM (12.7GB used, ~29.5 TFLOP/s/device steady
+# state, ~15% MFU vs v5e's 197 TFLOP/s/chip bf16 peak).
+remat_policy: "full"
 weight_dtype: "bfloat16"
+
+# --- GMM tile sizes (megablox) ---
+# Defaults use mlp_dim tile=1024, but base_moe_mlp_dim here is 512, so every expert
+# matmul was tiled 2x wider than the actual dimension. Matching the tile to the real
+# per-expert width lifted steady-state throughput ~14% (29.5 -> 33.5 TFLOP/s/device,
+# ~15% -> ~17% MFU on v5e-8). embed_dim/batch_seq tile changes and capacity_factor
+# (this model uses the dropless MoE path, which ignores capacity_factor) were tested
+# and did not help further.
+wi_tile_fwd_mlp_dim: 512
+wi_tile_dlhs_mlp_dim: 512
+wi_tile_drhs_mlp_dim: 512
+wo_tile_fwd_mlp_dim: 512
+wo_tile_dlhs_mlp_dim: 512
+wo_tile_drhs_mlp_dim: 512
