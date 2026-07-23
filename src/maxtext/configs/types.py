@@ -281,6 +281,7 @@ ModelName = Literal[
     "olmo3-32b",
     "omnimoe",
     "omnimoe-test",
+    "omnimoe_8b",
 ]
 
 

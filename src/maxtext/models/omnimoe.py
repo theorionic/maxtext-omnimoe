@@ -134,17 +134,36 @@ class OmniMoEDecoderLayer(nnx.Module):
 
     kernel_init = initializers.nd_dense_init(
         config.dense_init_scale, "fan_in", "truncated_normal")
-    self.mlp = moe.RoutedAndSharedMoE(
-        config=config,
-        mesh=mesh,
-        kernel_init=kernel_init,
-        kernel_axes=("embed", None),
-        dtype=config.dtype,
-        weight_dtype=config.weight_dtype,
-        quant=quant,
-        is_hash_routing=False,
-        rngs=rngs,
-    )
+    if config.shared_experts > 0:
+      self.mlp = moe.RoutedAndSharedMoE(
+          config=config,
+          mesh=mesh,
+          kernel_init=kernel_init,
+          kernel_axes=("embed", None),
+          dtype=config.dtype,
+          weight_dtype=config.weight_dtype,
+          quant=quant,
+          is_hash_routing=False,
+          rngs=rngs,
+      )
+    else:
+      # Pure routed MoE (no always-on shared expert): each token is dispatched to
+      # exactly its top-k routed experts and nothing else. Used for the
+      # one-expert-per-chip expert-parallel configuration.
+      self.mlp = moe.RoutedMoE(
+          config=config,
+          num_experts=config.num_experts,
+          num_experts_per_tok=config.num_experts_per_tok,
+          mesh=mesh,
+          kernel_init=kernel_init,
+          kernel_axes=("embed_moe", None),
+          intermediate_dim=config.moe_mlp_dim,
+          dtype=config.dtype,
+          weight_dtype=config.weight_dtype,
+          quant=quant,
+          is_hash_routing=False,
+          rngs=rngs,
+      )
 
     self.dropout = Dropout(rate=config.dropout_rate, broadcast_dims=(-2,), rngs=self.rngs)
     if model_mode == MODEL_MODE_PREFILL:
