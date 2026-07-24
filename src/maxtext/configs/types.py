@@ -1541,6 +1541,18 @@ class TrainingLoop(BaseModel):
   )
   abort_on_nan_loss: bool = Field(True, description="Check for NaN values and abort training.")
   abort_on_inf_loss: bool = Field(True, description="Check for Inf values and abort training.")
+  generate_interval: int = Field(
+      -1,
+      description="Greedy-sample generate_prompts every N training steps as a qualitative health probe. <=0 disables.",
+  )
+  generate_max_new_tokens: int = Field(
+      48,
+      description="Number of new tokens to greedily generate per prompt when generate_interval > 0.",
+  )
+  generate_prompts: str = Field(
+      "",
+      description="Prompts to sample when generate_interval > 0; separate multiple prompts with '|||'.",
+  )
   enable_dropout: bool = Field(True, description="Enables dropout in the model.")
   dropout_rate: float = Field(0.0, ge=0.0, le=1.0, description="The dropout rate.")
   enable_data_shuffling: bool = Field(True, description="Enables shuffling of the training data.")

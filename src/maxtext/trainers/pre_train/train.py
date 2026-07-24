@@ -797,6 +797,14 @@ def training_loop_iteration(
       )
       eval_step_count += 1
 
+  # Optional in-training text generation (qualitative health probe). Opt-in via
+  # config.generate_interval > 0; reuses the training forward, never the train step.
+  generate_interval = getattr(config, "generate_interval", -1)
+  if generate_interval > 0 and step > start_step and (step + 1) % generate_interval == 0:
+    from maxtext.trainers.pre_train import generate_utils  # local import: opt-in only
+
+    generate_utils.generate_and_log(model, state, config, mesh, logical_axis_rules, step)
+
   prof.maybe_deactivate_profiler(step, state)
 
   if step == start_step:

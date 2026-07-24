@@ -76,13 +76,13 @@ adam_eps: 1.0e-8
 gradient_clipping_threshold: 1.0
 
 # --- Training ---
-# per_device_batch_size=2 is the measured throughput sweet spot on v5e-8 for this
-# one-expert-per-chip layout. The step is HBM-bandwidth bound on the 10240-wide
-# expert activations under full remat, so SMALLER batches run MORE efficiently
-# per token, not less. Measured steady-state TFLOP/s/device (v5e peak 197):
-#   bs=1 -> 26.0 | bs=2 -> 29.1 (14.8% MFU) | bs=4 -> 27.3 | bs=6 -> 26.4 | bs=8 -> 24.6
-# Global batch = 2 * 8 chips = 16 sequences/step. Raise via gradient accumulation
-# if you need a larger effective batch without losing MFU.
+# per_device_batch_size=2 x max_target_length=1024 x 8 chips = 16k tokens/step is the
+# MFU sweet spot. The step is all-to-all-COMMUNICATION bound (top-1 one-expert-per-chip),
+# and the dropless-MoE ragged buffers grow with tokens/step, so DOUBLING tokens/step does
+# not help: bs=4 or seq=2048 pushes HBM toward the 15.75 GB limit and MFU falls, while
+# bs=8 and seq=4096 OOM outright (benchmarked on v5e-8). Global batch = 2 * 8 = 16
+# sequences/step; raise the EFFECTIVE batch via gradient_accumulation_steps (below),
+# never via bs/seq.
 per_device_batch_size: 2
 # Gradient accumulation runs 8 microbatches of bs=2 (each at the MFU-optimal size)
 # per optimizer step -> effective batch 2*8*8chips = 128 sequences, while amortizing
@@ -97,10 +97,18 @@ ici_tensor_parallelism: 1
 ici_expert_parallelism: 8       # 8 experts / 8 chips = 1 expert per chip
 ici_data_parallelism: 1
 scan_layers: false
-# full remat is required: a ~1B expert + AdamW (mu,nu) already fills most HBM, and
-# the wide 10240 expert intermediate cannot be kept resident (save-activation remat
-# policies OOM even at bs=2). Profiling shows ~37% of the step is MoE all-to-all
-# (intrinsic to top-1 one-expert-per-chip: every token travels to its expert's chip
-# and back), ~25% expert GMM, ~23% routing/activation fusions.
-remat_policy: "full"            # 1B/chip + Adam states leaves little HBM; recompute activations
+# remat_policy=full is optimal AND the fastest numerically-stable policy at the
+# production gradient_accumulation_steps=8. Benchmarked on v5e-8 (synthetic data,
+# steady state; v5e bf16 peak 197 TFLOP/s/device):
+#   full                  -> 30.9 TFLOP/s (15.7% MFU), 13.3 GB HBM   <- best & stable
+#   save_dot_except_mlp   -> 30.7 TFLOP/s (15.6%), stable but NO gain
+#   save_qkv_proj         -> 30.9 TFLOP/s (15.7%), NO gain
+#   save_dot_except_mlpwi -> DIVERGES TO NaN at accum=8 (reproduced twice); do NOT use
+# (save_dot_except_mlpwi looks ~2x faster at accum=1, but that is an accum=1-only
+# artifact: at the real accum=8 it aborts on NaN loss.) The step is all-to-all
+# COMMUNICATION bound, not HBM-bandwidth bound: with top-1 one-expert-per-chip every
+# token is dispatched to its expert's chip and combined back. full remat is cheap
+# here precisely because it recomputes those (cheap) activations instead of paying
+# extra HBM to keep them, and it never re-runs the expensive all-to-all in backward.
+remat_policy: "full"
 weight_dtype: "bfloat16"        # keeps weights+mu+nu at 2B each so a 1B expert fits per chip

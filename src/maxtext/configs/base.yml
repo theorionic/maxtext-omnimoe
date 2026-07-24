@@ -986,6 +986,12 @@ target_eval_loss: 0.  # early stop once reaching target eval_loss
 abort_on_nan_loss: true # Check for NaN and abort if found in training loss
 abort_on_inf_loss: true # Check for Inf and abort if found in training loss
 
+# In-training text generation (qualitative health probe; see trainers/pre_train/generate_utils.py).
+# Opt-in: <=0 disables. When >0, greedy-decode `generate_prompts` every this many optimizer steps.
+generate_interval: -1
+generate_max_new_tokens: 48       # number of new tokens to greedily sample per prompt
+generate_prompts: ""              # prompts to sample; separate multiple prompts with '|||'
+
 # Goodput parameters
 enable_goodput_recording: false
 monitor_goodput: false
